@@ -1,0 +1,53 @@
+# macOS
+.DS_Store
+
+# Android
+android/build/
+android/.gradle/
+android/local.properties
+*.iml
+*.keystore
+!debug.keystore
+.gradle/
+.cxx/
+.kotlin/
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Environment variables
+.env
+
+# Metro
+.metro-health-check*
+
+# Bundle
+*.jsbundle
+
+# Test coverage
+coverage/
+__tests__/
+
+# Fastlane
+**/fastlane/screenshots
+**/fastlane/test_output
+**/fastlane/report.xml
+**/fastlane/Preview.html
+
+# Yarn (optional if using)
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# VSCode personal settings (optional)
+.vscode/
+
+# Android build
+android/app/build/
+*.apk
+*.so
