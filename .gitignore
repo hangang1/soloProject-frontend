@@ -51,3 +51,6 @@ __tests__/
 android/app/build/
 *.apk
 *.so
+
+# .idea
+.idea/
