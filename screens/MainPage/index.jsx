@@ -1,13 +1,15 @@
 import React from 'react';
 import { Alert, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
+import RNFS from 'react-native-fs';
+import JSZip from 'jszip';
+import { Buffer } from 'buffer';
 
 export default function MainPage() {
   const handleUpload = async () => {
     try {
-      const [pickResult] = await pick({
-        type: [types.doc, types.docx],
-      });
+      // 1. 파일 선택 및 복사
+      const [pickResult] = await pick({ type: [types.doc, types.docx] });
       const [copyResult] = await keepLocalCopy({
         files: [
           {
@@ -17,11 +19,18 @@ export default function MainPage() {
         ],
         destination: 'documentDirectory',
       });
-      if (copyResult.status === 'success') {
-        Alert.alert('성공', `파일이 로컬에 저장되었습니다.\n경로: ${copyResult.localUri}`);
-      } else {
+      if (copyResult.status !== 'success') {
         Alert.alert('실패', copyResult.error || '파일 저장에 실패했습니다.');
+        return;
       }
+      Alert.alert('성공', `파일이 로컬에 저장되었습니다.\n경로: ${copyResult.localUri}`);
+  
+      const realPath = copyResult.localUri.replace('file://', '');
+      const fileBase64 = await RNFS.readFile(realPath, 'base64');
+      const buffer = Buffer.from(fileBase64, 'base64');
+      const zip = await JSZip.loadAsync(buffer);
+      const documentXml = await zip.file('word/document.xml').async('string');
+      console.log(documentXml);
     } catch (err) {
       console.log('pick 함수 에러:', err);
       Alert.alert('오류', err?.message || String(err));
