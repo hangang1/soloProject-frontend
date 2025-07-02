@@ -1,7 +1,33 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Alert, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
 
 export default function MainPage() {
+  const handleUpload = async () => {
+    try {
+      const [pickResult] = await pick({
+        type: [types.doc, types.docx],
+      });
+      const [copyResult] = await keepLocalCopy({
+        files: [
+          {
+            uri: pickResult.uri,
+            fileName: pickResult.name ?? '업로드파일.docx',
+          },
+        ],
+        destination: 'documentDirectory',
+      });
+      if (copyResult.status === 'success') {
+        Alert.alert('성공', `파일이 로컬에 저장되었습니다.\n경로: ${copyResult.localUri}`);
+      } else {
+        Alert.alert('실패', copyResult.error || '파일 저장에 실패했습니다.');
+      }
+    } catch (err) {
+      console.log('pick 함수 에러:', err);
+      Alert.alert('오류', err?.message || String(err));
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>자동 보고문서 생성 카메라</Text>
@@ -28,7 +54,7 @@ export default function MainPage() {
       </View>
 
       <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.uploadButton}>
+        <TouchableOpacity style={styles.uploadButton} onPress={handleUpload}>
           <Text style={styles.uploadButtonText}>보고서{"\n"}UPLOAD</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.exitButton}>
