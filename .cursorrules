@@ -1,0 +1,127 @@
+# Cursor Rules for React Native Project
+
+## 코딩 스타일
+- 항상 한국어로 응답하세요
+- React Native 컴포넌트는 함수형 컴포넌트를 사용하세요
+- ES6+ 문법을 사용하세요
+- 컴포넌트명은 PascalCase를 사용하세요
+- 파일명은 camelCase를 사용하세요
+
+## 파일 구조
+- 컴포넌트는 `components/` 폴더에 저장하세요
+- 화면은 `screens/` 폴더에 저장하세요
+- 유틸리티 함수는 별도 폴더에 저장하세요
+
+## 코드 품질
+- 의미있는 변수명과 함수명을 사용하세요
+- 주석을 한국어로 작성하세요
+- 에러 처리를 포함하세요
+- 성능을 고려한 코드를 작성하세요
+
+## React Native 특화
+- Platform.OS를 사용하여 플랫폼별 분기 처리하세요
+- React Native의 기본 컴포넌트를 우선 사용하세요
+- 네비게이션은 React Navigation을 사용하세요 
+
+
+##프로젝트 개요
+리액트네이티브 안드로이드 어플, NPM사용
+
+특정한 형식의 보고서에 삽입하기 위한 사진촬영을 자주하는 업무자(ex:공사현장, 소방, 안전 등은 매번 보고서 작성을 할때마다 사진을 리사이즈하고
+촬영 후 내용에 맞는 적당한 사진을 다시 확인하여 삽입하여야 하는 불편함 있음. 따라서 사진을 삽입해야하는 docs 파일 보고서를 어플에 업로드하면
+어플이 그 문서에 넣어야 하는 사진 비율에 따라 촬영사진 사이즈 선택해서 촬영을 할 수 있도록 해주고, 촬영시 문서 순서에 맞게 문서에 사진 삽입해주는 어플. 최종적으로 docs나 pdf를 선택하여 로컬에 저장가능. 백엔드는 없음. 테일윈드의 nr 버전인 네이티브윈드 사용(최종!테일윈드, 네이티브윈드 사용안함!!)
+
+폴더구조(참고)
+
+📁 app/
+├── 📁 frontend/
+│   ├── 📁 assets/
+│   │   ├── images/
+│   │   ├── fonts/
+│   │   └── templates/             # DOCX 템플릿 파일 저장
+│
+│   ├── 📁 components/              # 공통 UI
+│   │   ├── Button.jsx
+│   │   ├── UploadBox.jsx
+│   │   └── ImagePreview.jsx
+│
+│   ├── 📁 screens/                 # 각 화면 (페이지)
+│   │   ├── HomeScreen/
+│   │   │   ├── index.jsx
+│   │   │   └── styles.js
+│   │   ├── UploadScreen/
+│   │   ├── PreviewScreen/
+│   │   └── ExportScreen/
+│
+│   ├── 📁 stores/                  # Zustand 상태 관리
+│   │   └── useAppStore.js
+│
+│   ├── 📁 utils/                   # 유틸 함수 모음
+│   │   ├── parseDocx.js
+│   │   ├── resizeImage.js
+│   │   └── fileHelpers.js
+│
+│   ├── 📁 services/               # 기능 처리 로직
+│   │   ├── docxService.js
+│   │   └── exportService.js
+│
+│   ├── 📁 config/                 # 환경 변수, 상수
+│   │   └── constants.js
+│
+│   └── App.js                    # 앱 진입점
+│
+├── 📄 .env
+├── 📄 .gitignore
+├── 📄 package.json
+├── 📄 [README.md](http://readme.md/)
+
+🎯 최종 기술 스택 구조 (보완 반영)
+📦 1. 코어
+크로스 플랫폼 – React Native
+
+📄 2. DOCX 처리
+
+DOCX삽입 - react-native-document-picker
+DOCX 파싱 – docx4js 또는 mammoth.js
+
+DOCX 조작 – Pizzip + docxtemplater
+
+이미지 삽입 – docxtemplater-image-module-free
+
+결과물 저장 – react-native-fs
+
+📸 3. 이미지 처리
+이미지 촬영 – react-native-image-picker
+
+이미지 리사이징 – react-native-image-resizer
+
+이미지 갤러리 저장및접근-react-native-camera-roll
+
+📂 4. 파일 I/O
+파일 접근 – expo-file-system 또는 react-native-fs
+
+파일 공유 – expo-sharing 또는 react-native-share
+
+🧑🏻‍💼 5. 전역 상태 관리
+Zustand – 보일러플레이트 없이 간결한 전역 상태 관리 도구
+
+🪛 6. 코드 품질 & 팀워크 도구
+ESLint – 문법 오류 사전 탐지
+
+Prettier – 코드 스타일 자동 정리
+
+Husky – Git hook으로 커밋 전 검사 자동화
+
+📑 7. PDF 변환
+DOCX → PDF 변환 – react-native-html-to-pdf
+
+🎨8. CSS
+
+CSS-in-JS 스타일링 - tailwindcss
+
+React Native에서 Tailwind를 그대로 사용 가능 - nativewind  
+🏗️9.빌드환경
+
+native 모듈 빌드 및 실행 -  Android Studio
+
+(최종!테일윈드, 네이티브윈드 사용안함!!)

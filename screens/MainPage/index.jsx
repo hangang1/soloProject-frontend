@@ -1,12 +1,15 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Alert, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
 import JSZip from 'jszip';
 import { Buffer } from 'buffer';
 import { XMLParser } from 'fast-xml-parser';
+import { useNavigation } from '@react-navigation/native';
 
 export default function MainPage() {
+  const navigation = useNavigation();
+
   const importDocx = async () => {
     const [pickResult] = await pick({ type: [types.doc, types.docx] });
     const [copyResult] = await keepLocalCopy({
@@ -22,7 +25,6 @@ export default function MainPage() {
       Alert.alert('실패', copyResult.error || '파일 저장에 실패했습니다.');
       return null;
     }
-    Alert.alert('성공', `파일이 로컬에 저장되었습니다.\n경로: ${copyResult.localUri}`);
     return copyResult.localUri;
   };
 
@@ -35,7 +37,7 @@ export default function MainPage() {
     return documentXml;
   };
 
-  const xmlToJs = async (documentXml) => {
+  const xmlToJs = async (documentXml, localUri) => {
     const parser = new XMLParser({
       ignoreAttributes: false
     });
@@ -47,6 +49,8 @@ export default function MainPage() {
       return;
     }
     const bodyArr = Array.isArray(body) ? body : [body];
+    let foundPhoto = false;
+    const photoCells = [];
 
     bodyArr.forEach((page, pageIdx) => {
       const tables = page?.['w:tbl'];
@@ -97,7 +101,13 @@ export default function MainPage() {
             const photoMatches = cellText.match(/사진\d+/g);
 
             if (photoMatches) {
+              foundPhoto = true;
               photoMatches.forEach(match => {
+                photoCells.push({
+                  match,
+                  cellWidthMm,
+                  rowHeightMm,
+                });
                 console.log(
                   `페이지${pageIdx+1} - 표${tblIdx+1} - [${rowIdx+1}행, ${colIdx+1}열] : ${match}\n` +
                   `가로: ${cellWidthMm}mm, 세로: ${rowHeightMm}mm`
@@ -108,6 +118,10 @@ export default function MainPage() {
         });
       });
     });
+
+    if (photoCells.length > 0) {
+      navigation.navigate('Capturing', { localUri, photoCells });
+    }
   };
 
   const handleUpload = async () => {
@@ -115,7 +129,7 @@ export default function MainPage() {
       const localUri = await importDocx();
       if (!localUri) return;
       const documentXml = await docxToXml(localUri);
-      await xmlToJs(documentXml);
+      await xmlToJs(documentXml, localUri);
     } catch (err) {
       console.log('pick 함수 에러:', err);
       Alert.alert('오류', err?.message || String(err));
