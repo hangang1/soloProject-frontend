@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { View, TouchableOpacity, Text, StyleSheet, Dimensions, Image } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, Dimensions, Image, Platform, PermissionsAndroid } from 'react-native';
 import Toast from 'react-native-root-toast';
 import { Camera, useCameraDevices } from 'react-native-vision-camera';
 import GuideOverlay from './GuidedOverlay';
+import RNFS from 'react-native-fs';
 
 export default function Capturing() {
   const route = useRoute();
@@ -16,8 +17,6 @@ export default function Capturing() {
   const [hasPermission, setHasPermission] = useState(false);
   const cameraRef = useRef(null);
   const [isSaving, setIsSaving] = useState(false);
-
-  console.log('devices:', JSON.stringify(devices, null, 2));
 
   useEffect(() => {
     (async () => {
@@ -65,19 +64,55 @@ export default function Capturing() {
     }
   }
 
+  const requestStoragePermission = async () => {
+    if (Platform.OS === 'android') {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
+        {
+          title: '저장소 권한 요청',
+          message: '사진을 DCIM/Camera에 저장하려면 권한이 필요합니다.',
+          buttonNeutral: '나중에',
+          buttonNegative: '취소',
+          buttonPositive: '확인',
+        },
+      );
+      return granted === PermissionsAndroid.RESULTS.GRANTED;
+    }
+    return true;
+  };
+
   const handleTakePhoto = async () => {
-    if (!cameraRef.current) return;
+    if (!cameraRef.current || isSaving) return;
+
+    setIsSaving(true);
     try {
-      setIsSaving(true);
       const photo = await cameraRef.current.takePhoto({ flash: 'off' });
-      setPhotos([...photos, photo.path]);
+      const photoUri = `file://${photo.path}`;
+
+      const fileName = `IMG_${Date.now()}.jpg`;
+      const destPath = `${RNFS.ExternalDirectoryPath}/${fileName}`;
+      await RNFS.copyFile(photoUri, destPath);
+
+      Toast.show('앱 전용 폴더에 사진이 저장되었습니다!', {
+        duration: Toast.durations.SHORT,
+        position: Toast.positions.BOTTOM,
+      });
+
+      setPhotos(prev => [...prev, destPath]);
       if (currentIdx < photoCells.length - 1) {
         setCurrentIdx(currentIdx + 1);
       } else {
-        Toast.show('모든 사진 촬영 완료!', { duration: Toast.durations.SHORT, position: Toast.positions.BOTTOM });
+        Toast.show('모든 셀 촬영 완료!', {
+          duration: Toast.durations.SHORT,
+          position: Toast.positions.BOTTOM,
+        });
       }
     } catch (err) {
-      Toast.show('사진 촬영 실패: ' + err.message, { duration: Toast.durations.SHORT, position: Toast.positions.BOTTOM });
+      console.error('촬영/저장 실패:', err);
+      Toast.show('촬영 실패: ' + err.message, {
+        duration: Toast.durations.SHORT,
+        position: Toast.positions.BOTTOM,
+      });
     } finally {
       setIsSaving(false);
     }
