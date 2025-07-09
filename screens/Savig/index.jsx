@@ -31,34 +31,36 @@ export default function Saving() {
         templateData[`PHOTO${idx + 1}`] = photoPath;
       });
 
+      await Promise.all(guidedPhotos.map(async (photoPath, idx) => {
+        const exists = await RNFS.exists(photoPath);
+      }));
+
       const imageModule = new ImageModule({
         centered: false,
         fileType: 'docx',
         getImage: async (tagValue, tagName) => {
           const idx = parseInt(tagName.replace("PHOTO", ""), 10) - 1;
-          if (idx < 0 || !guidedPhotos[idx]) {
-            throw new Error(`getImage: ${tagName}에 대응되는 파일 없음`);
-          }
-
           const imagePath = guidedPhotos[idx];
+
           const exists = await RNFS.exists(imagePath);
-          if (!exists) {
-            throw new Error(`getImage: 파일이 존재하지 않음: ${imagePath}`);
-          }
+          if (!exists) throw new Error(`getImage: 파일이 존재하지 않음: ${imagePath}`);
 
           const imageBase64 = await RNFS.readFile(imagePath, 'base64');
           const buf = Buffer.from(imageBase64, 'base64');
-          if (!Buffer.isBuffer(buf)) {
-            throw new Error(`getImage: 반환값이 Buffer가 아님`);
-          }
 
           return buf;
         },
         getSize: (buf, tagValue, tagName) => {
           const idx = parseInt(tagName.replace("PHOTO", ""), 10) - 1;
           const cell = photoCells[idx];
+
+          if (!cell || !cell.cellWidthMm || !cell.rowHeightMm) {
+            throw new Error(`getSize: invalid cell size. cell=${JSON.stringify(cell)}`);
+          }
+
           const widthEmu = parseFloat(cell.cellWidthMm) * 36000;
           const heightEmu = parseFloat(cell.rowHeightMm) * 36000;
+
           return [widthEmu, heightEmu];
         }
       });
@@ -92,6 +94,12 @@ export default function Saving() {
         message: 'DOCX 파일이 성공적으로 생성되었습니다!',
       });
     } catch (err) {
+      console.error('[ERROR] render 또는 파일 생성 중 문제 발생:', err);
+      if (err.properties && err.properties.errors) {
+        err.properties.errors.forEach(e => {
+          console.error('[ERROR DETAIL]', e);
+        });
+      }
       Toast.show('오류: ' + err.message, {
         duration: Toast.durations.LONG,
         position: Toast.positions.CENTER,
@@ -114,7 +122,7 @@ export default function Saving() {
           onPress={handleCreateDocx}
         >
           <Text style={styles.saveButtonText}>
-            {isProcessing ? '처리중...' : 'DOC 파일로 생성'}
+            {isProcessing ? '처리중...' : '문서 저장'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -124,7 +132,7 @@ export default function Saving() {
         onPress={handleExit}
         disabled={isProcessing}
       >
-        <Text style={styles.exitButtonText}>종료</Text>
+        <Text style={styles.exitButtonText}>종 료</Text>
       </TouchableOpacity>
     </View>
   );
@@ -157,7 +165,7 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 22,
     fontWeight: 'bold',
   },
   saveButtonDisabled: {
@@ -171,11 +179,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     width: 180,
-    marginBottom: 40,
+    marginBottom: 20,
   },
   exitButtonText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 'bold',
     letterSpacing: 2,
   },

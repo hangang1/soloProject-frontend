@@ -49,43 +49,72 @@ export default function MainPage() {
     return documentXml;
   };
 
-  const xmlToJs = async (documentXml, localUri) => {
+  const xmlToJsImproved = async (documentXml, localUri) => {
     const parser = new XMLParser({ ignoreAttributes: false });
     const docObj = parser.parse(documentXml);
     const body = docObj['w:document']?.['w:body'];
-
+  
     if (!body) {
       Alert.alert('오류', '문서에 w:body가 없습니다.');
       return;
     }
-
+  
     const photoCells = [];
-    const tables = Array.isArray(body['w:tbl']) ? body['w:tbl'] : [body['w:tbl']];
-    if (!tables[0]) {
+    const tables = body['w:tbl']
+      ? Array.isArray(body['w:tbl'])
+        ? body['w:tbl']
+        : [body['w:tbl']]
+      : [];
+  
+    if (tables.length === 0) {
       Alert.alert('알림', '문서에 표(w:tbl)가 없습니다.');
       return;
     }
-
+  
     tables.forEach((tbl, tblIdx) => {
-      const rows = Array.isArray(tbl['w:tr']) ? tbl['w:tr'] : [tbl['w:tr']];
+      const rows = tbl['w:tr']
+        ? Array.isArray(tbl['w:tr'])
+          ? tbl['w:tr']
+          : [tbl['w:tr']]
+        : [];
+  
       rows.forEach((row, rowIdx) => {
         const rowHeightDxa = row?.['w:trPr']?.['w:trHeight']?.['@_w:val'];
         const rowHeightMm = rowHeightDxa ? (rowHeightDxa * 0.3528 / 20).toFixed(2) : '알수없음';
-
-        const cells = Array.isArray(row['w:tc']) ? row['w:tc'] : [row['w:tc']];
+  
+        const cells = row['w:tc']
+          ? Array.isArray(row['w:tc'])
+            ? row['w:tc']
+            : [row['w:tc']]
+          : [];
+  
         cells.forEach((cell, colIdx) => {
           const cellWidthDxa = cell?.['w:tcPr']?.['w:tcW']?.['@_w:w'];
           const cellWidthMm = cellWidthDxa ? (cellWidthDxa * 0.3528 / 20).toFixed(2) : '알수없음';
-
+  
+          const paras = cell['w:p']
+            ? Array.isArray(cell['w:p'])
+              ? cell['w:p']
+              : [cell['w:p']]
+            : [];
+  
           let cellText = '';
-          const paras = Array.isArray(cell['w:p']) ? cell['w:p'] : [cell['w:p']];
+  
           paras.forEach(p => {
-            const runs = Array.isArray(p['w:r']) ? p['w:r'] : [p['w:r']];
+            const runs = p['w:r']
+              ? Array.isArray(p['w:r'])
+                ? p['w:r']
+                : [p['w:r']]
+              : [];
+  
             runs.forEach(r => {
-              if (r['w:t']) cellText += Array.isArray(r['w:t']) ? r['w:t'].join('') : r['w:t'];
+              if (r['w:t']) {
+                const text = Array.isArray(r['w:t']) ? r['w:t'].join('') : r['w:t'];
+                cellText += text;
+              }
             });
           });
-
+  
           if (cellText.includes('PHOTO')) {
             photoCells.push({
               match: 'PHOTO',
@@ -99,13 +128,13 @@ export default function MainPage() {
         });
       });
     });
-
+  
     if (photoCells.length > 0) {
       navigation.navigate('Capturing', { localUri, photoCells });
     } else {
       Alert.alert('알림', '문서에서 PHOTO 태그를 찾지 못했습니다.');
     }
-  };
+  };  
 
   const handleUpload = async () => {
     try {
@@ -113,7 +142,7 @@ export default function MainPage() {
       if (!localUri) return;
 
       const documentXml = await docxToXml(localUri);
-      await xmlToJs(documentXml, localUri);
+      await xmlToJsImproved(documentXml, localUri);
     } catch (err) {
       Alert.alert('오류', err?.message || String(err));
     }
@@ -147,9 +176,6 @@ export default function MainPage() {
       <View style={styles.buttonContainer}>
         <TouchableOpacity style={styles.uploadButton} onPress={handleUpload}>
           <Text style={styles.uploadButtonText}>보고서{"\n"}UPLOAD</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.exitButton}>
-          <Text style={styles.exitButtonText}>종료</Text>
         </TouchableOpacity>
       </View>
     </View>
