@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import {
-  PixelRatio,
   View,
   TouchableOpacity,
   Text,
@@ -16,16 +15,20 @@ import { Camera, useCameraDevices } from 'react-native-vision-camera';
 import GuideOverlay from './GuidedOverlay';
 import RNFS from 'react-native-fs';
 import PhotoManipulator from 'react-native-photo-manipulator';
+import ViewShot from 'react-native-view-shot';
 
 export default function Capturing() {
   const route = useRoute();
+  const navigation = useNavigation();
   const { localUri, photoCells = [] } = route.params || {};
   const [currentIdx, setCurrentIdx] = useState(0);
   const [photos, setPhotos] = useState([]);
+  const [guidedPhotos, setGuidedPhotos] = useState([]);
   const devices = useCameraDevices();
   const device = devices?.find((d) => d.position === 'back');
   const [hasPermission, setHasPermission] = useState(false);
   const cameraRef = useRef(null);
+  const viewShotRef = useRef(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -91,64 +94,89 @@ export default function Capturing() {
   };
 
   const handleTakePhoto = async () => {
-    const photo = await cameraRef.current.takePhoto({ flash: 'off' });
-    const photoUri = `file://${photo.path}`;
-  
-    const fileName = `IMG_${Date.now()}.jpg`;
-    const destPath = `${RNFS.ExternalDirectoryPath}/${fileName}`;
-    await RNFS.copyFile(photoUri, destPath);
-  
-    setPhotos((prev) => [...prev, destPath]);
-    Toast.show('일반사진 저장됨', { duration: Toast.durations.SHORT });
-  
-    return `file://${destPath}`;
-  };
-
-  const handleTakeGuidedPhoto = async (photoUri) => {
-    const scale = PixelRatio.get();
-
-    const left = (screenWidth - frameWidth) / 2;
-    const top = (screenHeight - frameHeight) / 2;
-
-    const cropRect = {
-      x: left * scale,
-      y: top * scale,
-      width: frameWidth * scale,
-      height: frameHeight * scale,
-    };
-
-    const croppedUri = await PhotoManipulator.crop(photoUri, cropRect);
-    const guidedPath = `${RNFS.ExternalDirectoryPath}/GUIDED_${Date.now()}.jpg`;
-    await RNFS.copyFile(croppedUri, guidedPath);
-
-    Toast.show('가이드사진 저장됨', { duration: Toast.durations.SHORT });
-  };
-
-  const handleCombinedTakePhoto = async () => {
     if (!cameraRef.current || isSaving) return;
-
+  
     setIsSaving(true);
     try {
       await requestStoragePermission();
-
-      const photoUri = await handleTakePhoto();
-      await handleTakeGuidedPhoto(photoUri);
-
+  
+      const photo = await cameraRef.current.takePhoto({ flash: 'off' });
+      let photoUri = photo.path;
+      if (!photoUri.startsWith('/')) {
+        photoUri = photoUri.replace(/^file:\/\//, '');
+      }
+      
+      const fileName = `IMG_${Date.now()}.jpg`;
+      const destPath = `${RNFS.ExternalDirectoryPath}/${fileName}`;
+      await RNFS.copyFile(photoUri, destPath);
+  
+      setPhotos((prev) => [...prev, destPath]);
+  
+      const guidedPath = await handleTakeGuidedPhoto(destPath);
+  
       if (currentIdx < photoCells.length - 1) {
+        setGuidedPhotos(prev => [...prev, guidedPath]);
         setCurrentIdx(currentIdx + 1);
-      } else {
-        Toast.show('모든 셀 촬영 완료!', {
+        Toast.show('다음 셀로 이동합니다.', {
           duration: Toast.durations.SHORT,
           position: Toast.positions.BOTTOM,
         });
+      } else {
+        const finalGuidedPhotos = [...guidedPhotos, guidedPath];
+        Toast.show('모든 촬영 완료!', {
+          duration: Toast.durations.SHORT,
+          position: Toast.positions.BOTTOM,
+        });
+  
+        navigation.navigate('Saving', {
+          guidedPhotos: finalGuidedPhotos,
+          photoCells: photoCells,
+          originalDocxPath: localUri,
+        });
       }
     } catch (err) {
-      console.error('오류:', err);
-      Toast.show(`오류: ${err.message}`, { duration: Toast.durations.SHORT });
+      console.error('촬영/저장 실패:', err);
+      Toast.show('촬영 실패: ' + err.message, {
+        duration: Toast.durations.SHORT,
+        position: Toast.positions.BOTTOM,
+      });
     } finally {
       setIsSaving(false);
     }
   };
+  
+  const handleTakeGuidedPhoto = async (photoPath) => {
+    try {
+      const { left, top, width, height } = frameStyle;
+      const originalImage = await RNFS.stat(photoPath);
+      const imageWidth = 1920;
+      const imageHeight = 1080;
+  
+      const xRatio = imageWidth / screenWidth;
+      const yRatio = imageHeight / screenHeight;
+  
+      const cropRect = {
+        x: left * xRatio,
+        y: top * yRatio,
+        width: width * xRatio,
+        height: height * yRatio,
+      };
+  
+      const croppedUri = await PhotoManipulator.crop(
+        `file://${photoPath}`,
+        cropRect
+      );
+  
+      const destPath = `${RNFS.ExternalDirectoryPath}/GUIDED_${Date.now()}.jpg`;
+      const croppedPath = croppedUri.replace(/^file:\/\//, '');
+      await RNFS.moveFile(croppedPath, destPath);
+  
+      return destPath;
+    } catch (err) {
+      console.error('크롭 중 에러 발생:', err);
+      return '';
+    }
+  };  
 
   if (!device || !hasPermission) {
     return (
@@ -171,14 +199,16 @@ export default function Capturing() {
 
   return (
     <View style={styles.container}>
-      <Camera
-        ref={cameraRef}
-        style={styles.camera}
-        device={device}
-        isActive={true}
-        photo={true}
-      />
-      <GuideOverlay frameStyle={frameStyle} />
+      <ViewShot ref={viewShotRef} style={styles.camera} options={{ format: 'jpg', quality: 1 }}>
+        <Camera
+          ref={cameraRef}
+          style={styles.camera}
+          device={device}
+          isActive={true}
+          photo={true}
+        />
+        <GuideOverlay frameStyle={frameStyle} />
+      </ViewShot>
 
       <Text style={styles.guideText} pointerEvents="none">
         {currentCell
@@ -188,11 +218,13 @@ export default function Capturing() {
 
       <View style={styles.captureButtonContainer}>
         <TouchableOpacity
-          onPress={handleCombinedTakePhoto}
+          onPress={handleTakePhoto}
           style={[styles.captureButton, isSaving && styles.captureButtonDisabled]}
           disabled={isSaving}
         >
-          <Text style={styles.captureButtonText}>촬영</Text>
+          <Text style={styles.captureButtonText}>
+            {isSaving ? '저장중...' : '촬영'}
+          </Text>
         </TouchableOpacity>
       </View>
 

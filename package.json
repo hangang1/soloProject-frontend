@@ -24,6 +24,7 @@
     "@react-navigation/stack": "^7.4.2",
     "buffer": "^6.0.3",
     "docxtemplater": "^3.65.1",
+    "docxtemplater-image-module": "^3.1.0",
     "docxtemplater-image-module-free": "^1.1.1",
     "events": "^3.3.0",
     "fast-xml-parser": "^5.2.5",
@@ -43,6 +44,7 @@
     "react-native-share": "^12.1.0",
     "react-native-view-shot": "^4.0.3",
     "react-native-vision-camera": "^4.7.0",
+    "xml2js": "^0.6.2",
     "zustand": "^5.0.6"
   },
   "devDependencies": {
