@@ -1,9 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { View, TouchableOpacity, Text, StyleSheet, Dimensions, Image } from 'react-native';
+import {
+  View,
+  TouchableOpacity,
+  Text,
+  StyleSheet,
+  Dimensions,
+  Image,
+  Platform,
+  PermissionsAndroid,
+} from 'react-native';
 import Toast from 'react-native-root-toast';
 import { Camera, useCameraDevices } from 'react-native-vision-camera';
 import GuideOverlay from './GuidedOverlay';
+import RNFS from 'react-native-fs';
+import PhotoManipulator from 'react-native-photo-manipulator';
+import ViewShot from 'react-native-view-shot';
 
 export default function Capturing() {
   const route = useRoute();
@@ -11,13 +23,13 @@ export default function Capturing() {
   const { localUri, photoCells = [] } = route.params || {};
   const [currentIdx, setCurrentIdx] = useState(0);
   const [photos, setPhotos] = useState([]);
+  const [guidedPhotos, setGuidedPhotos] = useState([]);
   const devices = useCameraDevices();
-  const device = devices?.find(d => d.position === 'back');
+  const device = devices?.find((d) => d.position === 'back');
   const [hasPermission, setHasPermission] = useState(false);
   const cameraRef = useRef(null);
+  const viewShotRef = useRef(null);
   const [isSaving, setIsSaving] = useState(false);
-
-  console.log('devices:', JSON.stringify(devices, null, 2));
 
   useEffect(() => {
     (async () => {
@@ -28,17 +40,16 @@ export default function Capturing() {
 
   useEffect(() => {
     if (localUri) {
-      Toast.show(
-        '파일이 저장소에 저장되었습니다!',
-        {
-          duration: Toast.durations.SHORT,
-          position: Toast.positions.BOTTOM,
-        }
-      );
+      Toast.show('파일이 저장소에 저장되었습니다!', {
+        duration: Toast.durations.SHORT,
+        position: Toast.positions.BOTTOM,
+      });
     }
   }, [localUri]);
 
   const currentCell = photoCells[currentIdx];
+  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
   let aspectRatio = 1.0;
   let frameWidth = 100;
   let frameHeight = 100;
@@ -47,7 +58,7 @@ export default function Capturing() {
     const w = Number(currentCell.cellWidthMm);
     const h = Number(currentCell.rowHeightMm);
     aspectRatio = w / h;
-    const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
     if (aspectRatio >= 1) {
       frameWidth = screenWidth * 0.9;
       frameHeight = frameWidth / aspectRatio;
@@ -65,23 +76,107 @@ export default function Capturing() {
     }
   }
 
+  const requestStoragePermission = async () => {
+    if (Platform.OS === 'android') {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
+        {
+          title: '저장소 권한 요청',
+          message: '사진을 저장하려면 권한이 필요합니다.',
+          buttonNeutral: '나중에',
+          buttonNegative: '취소',
+          buttonPositive: '확인',
+        },
+      );
+      return granted === PermissionsAndroid.RESULTS.GRANTED;
+    }
+    return true;
+  };
+
   const handleTakePhoto = async () => {
-    if (!cameraRef.current) return;
+    if (!cameraRef.current || isSaving) return;
+  
+    setIsSaving(true);
     try {
-      setIsSaving(true);
+      await requestStoragePermission();
+  
       const photo = await cameraRef.current.takePhoto({ flash: 'off' });
-      setPhotos([...photos, photo.path]);
+      let photoUri = photo.path;
+      if (!photoUri.startsWith('/')) {
+        photoUri = photoUri.replace(/^file:\/\//, '');
+      }
+      
+      const fileName = `IMG_${Date.now()}.jpg`;
+      const destPath = `${RNFS.ExternalDirectoryPath}/${fileName}`;
+      await RNFS.copyFile(photoUri, destPath);
+  
+      setPhotos((prev) => [...prev, destPath]);
+  
+      const guidedPath = await handleTakeGuidedPhoto(destPath);
+  
       if (currentIdx < photoCells.length - 1) {
+        setGuidedPhotos(prev => [...prev, guidedPath]);
         setCurrentIdx(currentIdx + 1);
+        Toast.show('다음 셀로 이동합니다.', {
+          duration: Toast.durations.SHORT,
+          position: Toast.positions.BOTTOM,
+        });
       } else {
-        Toast.show('모든 사진 촬영 완료!', { duration: Toast.durations.SHORT, position: Toast.positions.BOTTOM });
+        const finalGuidedPhotos = [...guidedPhotos, guidedPath];
+        Toast.show('모든 촬영 완료!', {
+          duration: Toast.durations.SHORT,
+          position: Toast.positions.BOTTOM,
+        });
+  
+        navigation.navigate('Saving', {
+          guidedPhotos: finalGuidedPhotos,
+          photoCells: photoCells,
+          originalDocxPath: localUri,
+        });
       }
     } catch (err) {
-      Toast.show('사진 촬영 실패: ' + err.message, { duration: Toast.durations.SHORT, position: Toast.positions.BOTTOM });
+      console.error('촬영/저장 실패:', err);
+      Toast.show('촬영 실패: ' + err.message, {
+        duration: Toast.durations.SHORT,
+        position: Toast.positions.BOTTOM,
+      });
     } finally {
       setIsSaving(false);
     }
   };
+  
+  const handleTakeGuidedPhoto = async (photoPath) => {
+    try {
+      const { left, top, width, height } = frameStyle;
+      const originalImage = await RNFS.stat(photoPath);
+      const imageWidth = 1920;
+      const imageHeight = 1080;
+  
+      const xRatio = imageWidth / screenWidth;
+      const yRatio = imageHeight / screenHeight;
+  
+      const cropRect = {
+        x: left * xRatio,
+        y: top * yRatio,
+        width: width * xRatio,
+        height: height * yRatio,
+      };
+  
+      const croppedUri = await PhotoManipulator.crop(
+        `file://${photoPath}`,
+        cropRect
+      );
+  
+      const destPath = `${RNFS.ExternalDirectoryPath}/GUIDED_${Date.now()}.jpg`;
+      const croppedPath = croppedUri.replace(/^file:\/\//, '');
+      await RNFS.moveFile(croppedPath, destPath);
+  
+      return destPath;
+    } catch (err) {
+      console.error('크롭 중 에러 발생:', err);
+      return '';
+    }
+  };  
 
   if (!device || !hasPermission) {
     return (
@@ -91,30 +186,34 @@ export default function Capturing() {
     );
   }
 
-
-  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-  const frameStyle = currentCell ? {
-    position: 'absolute',
-    left: (screenWidth - frameWidth) / 2,
-    top: (screenHeight - frameHeight) / 2,
-    width: frameWidth,
-    height: frameHeight,
-    ...styles.guideFrame,
-  } : {};
+  const frameStyle = currentCell
+    ? {
+        position: 'absolute',
+        left: (screenWidth - frameWidth) / 2,
+        top: (screenHeight - frameHeight) / 2,
+        width: frameWidth,
+        height: frameHeight,
+        ...styles.guideFrame,
+      }
+    : {};
 
   return (
     <View style={styles.container}>
-      <Camera
-        ref={cameraRef}
-        style={styles.camera}
-        device={device}
-        isActive={true}
-        photo={true}
-      />
-      <GuideOverlay frameStyle={frameStyle} />
+      <ViewShot ref={viewShotRef} style={styles.camera} options={{ format: 'jpg', quality: 1 }}>
+        <Camera
+          ref={cameraRef}
+          style={styles.camera}
+          device={device}
+          isActive={true}
+          photo={true}
+        />
+        <GuideOverlay frameStyle={frameStyle} />
+      </ViewShot>
 
       <Text style={styles.guideText} pointerEvents="none">
-        {currentCell ? `${currentCell.match} (${currentIdx + 1}/${photoCells.length})` : '사진 셀 정보 없음'}
+        {currentCell
+          ? `${currentCell.match} (${currentIdx + 1}/${photoCells.length})`
+          : '사진 셀 정보 없음'}
       </Text>
 
       <View style={styles.captureButtonContainer}>
@@ -123,7 +222,9 @@ export default function Capturing() {
           style={[styles.captureButton, isSaving && styles.captureButtonDisabled]}
           disabled={isSaving}
         >
-          <Text style={styles.captureButtonText}>촬영</Text>
+          <Text style={styles.captureButtonText}>
+            {isSaving ? '저장중...' : '촬영'}
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -142,13 +243,8 @@ const BLUE = '#2D71BE';
 const YELLOW = '#FFD600';
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'black',
-  },
-  camera: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: 'black' },
+  camera: { flex: 1 },
   guideText: {
     position: 'absolute',
     top: 58,
@@ -174,14 +270,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  captureButtonDisabled: {
-    opacity: 0.5,
-  },
-  captureButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 18,
-  },
+  captureButtonDisabled: { opacity: 0.5 },
+  captureButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
   thumbnailContainer: {
     position: 'absolute',
     top: 0,
@@ -207,5 +297,15 @@ const styles = StyleSheet.create({
     borderColor: YELLOW,
     borderRadius: 8,
     zIndex: 10,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'black',
+  },
+  loadingText: {
+    color: '#fff',
+    fontSize: 16,
   },
 });

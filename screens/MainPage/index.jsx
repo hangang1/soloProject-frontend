@@ -1,14 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Alert, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
 import JSZip from 'jszip';
 import { Buffer } from 'buffer';
 import { XMLParser } from 'fast-xml-parser';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import Toast from 'react-native-root-toast';
 
 export default function MainPage() {
   const navigation = useNavigation();
+  const route = useRoute();
+
+  useEffect(() => {
+    if (route.params?.message) {
+      Toast.show(route.params.message, {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.CENTER,
+      });
+      navigation.setParams({ message: undefined });
+    }
+  }, [route.params?.message, navigation]);
 
   const importDocx = async () => {
     const [pickResult] = await pick({ type: [types.doc, types.docx] });
@@ -38,89 +50,60 @@ export default function MainPage() {
   };
 
   const xmlToJs = async (documentXml, localUri) => {
-    const parser = new XMLParser({
-      ignoreAttributes: false
-    });
+    const parser = new XMLParser({ ignoreAttributes: false });
     const docObj = parser.parse(documentXml);
     const body = docObj['w:document']?.['w:body'];
-    
+
     if (!body) {
-      console.log('문서에 w:body가 없습니다.');
+      Alert.alert('오류', '문서에 w:body가 없습니다.');
       return;
     }
-    const bodyArr = Array.isArray(body) ? body : [body];
-    let foundPhoto = false;
+
     const photoCells = [];
+    const tables = Array.isArray(body['w:tbl']) ? body['w:tbl'] : [body['w:tbl']];
+    if (!tables[0]) {
+      Alert.alert('알림', '문서에 표(w:tbl)가 없습니다.');
+      return;
+    }
 
-    bodyArr.forEach((page, pageIdx) => {
-      const tables = page?.['w:tbl'];
-      if (!tables) {
-        console.log(`페이지 ${pageIdx + 1}에 표(w:tbl)가 없습니다.`);
-        return;
-      }
+    tables.forEach((tbl, tblIdx) => {
+      const rows = Array.isArray(tbl['w:tr']) ? tbl['w:tr'] : [tbl['w:tr']];
+      rows.forEach((row, rowIdx) => {
+        const rowHeightDxa = row?.['w:trPr']?.['w:trHeight']?.['@_w:val'];
+        const rowHeightMm = rowHeightDxa ? (rowHeightDxa * 0.3528 / 20).toFixed(2) : '알수없음';
 
-      const tablesArray = Array.isArray(tables) ? tables : [tables];
-      
-      tablesArray.forEach((tbl, tblIdx) => {
-        const rows = tbl['w:tr'];
-        if (!rows) return;
-        
-        const rowsArray = Array.isArray(rows) ? rows : [rows];
-        
-        rowsArray.forEach((row, rowIdx) => {
-          let rowProps = row['w:trPr'];
-          if (Array.isArray(rowProps)) rowProps = rowProps[0];
-          let trHeight = rowProps?.['w:trHeight'];
-          if (Array.isArray(trHeight)) trHeight = trHeight[0];
-          const rowHeightDxa = trHeight?.['@_w:val'];
-          const rowHeightMm = rowHeightDxa && rowHeightDxa !== '' ? (rowHeightDxa * 0.3528 / 20).toFixed(2) : '알수없음';
-          const cells = row['w:tc'];
-          if (!cells) return;
-          const cellsArray = Array.isArray(cells) ? cells : [cells];
-          
-          cellsArray.forEach((cell, colIdx) => {
-            
-            let cellProps = cell['w:tcPr'];
-            if (Array.isArray(cellProps)) cellProps = cellProps[0];
-            let tcW = cellProps?.['w:tcW'];
-            const cellWidthDxa = tcW?.['@_w:w'];
-            const cellWidthMm = cellWidthDxa && cellWidthDxa !== '' ? (cellWidthDxa * 0.3528 / 20).toFixed(2) : '알수없음';
+        const cells = Array.isArray(row['w:tc']) ? row['w:tc'] : [row['w:tc']];
+        cells.forEach((cell, colIdx) => {
+          const cellWidthDxa = cell?.['w:tcPr']?.['w:tcW']?.['@_w:w'];
+          const cellWidthMm = cellWidthDxa ? (cellWidthDxa * 0.3528 / 20).toFixed(2) : '알수없음';
 
-            let cellText = '';
-            const paras = cell['w:p'] || [];
-            const parasArray = Array.isArray(paras) ? paras : [paras];
-
-            parasArray.forEach(p => {
-              const runs = p['w:r'] || [];
-              const runsArray = Array.isArray(runs) ? runs : [runs];
-              runsArray.forEach(r => {
-                if (r['w:t']) cellText += Array.isArray(r['w:t']) ? r['w:t'].join('') : r['w:t'];
-              });
+          let cellText = '';
+          const paras = Array.isArray(cell['w:p']) ? cell['w:p'] : [cell['w:p']];
+          paras.forEach(p => {
+            const runs = Array.isArray(p['w:r']) ? p['w:r'] : [p['w:r']];
+            runs.forEach(r => {
+              if (r['w:t']) cellText += Array.isArray(r['w:t']) ? r['w:t'].join('') : r['w:t'];
             });
-            
-            const photoMatches = cellText.match(/사진\d+/g);
-
-            if (photoMatches) {
-              foundPhoto = true;
-              photoMatches.forEach(match => {
-                photoCells.push({
-                  match,
-                  cellWidthMm,
-                  rowHeightMm,
-                });
-                console.log(
-                  `페이지${pageIdx+1} - 표${tblIdx+1} - [${rowIdx+1}행, ${colIdx+1}열] : ${match}\n` +
-                  `가로: ${cellWidthMm}mm, 세로: ${rowHeightMm}mm`
-                );
-              });
-            }
           });
+
+          if (cellText.includes('PHOTO')) {
+            photoCells.push({
+              match: 'PHOTO',
+              cellWidthMm,
+              rowHeightMm,
+              tblIdx,
+              rowIdx,
+              colIdx,
+            });
+          }
         });
       });
     });
 
     if (photoCells.length > 0) {
       navigation.navigate('Capturing', { localUri, photoCells });
+    } else {
+      Alert.alert('알림', '문서에서 PHOTO 태그를 찾지 못했습니다.');
     }
   };
 
@@ -128,10 +111,10 @@ export default function MainPage() {
     try {
       const localUri = await importDocx();
       if (!localUri) return;
+
       const documentXml = await docxToXml(localUri);
       await xmlToJs(documentXml, localUri);
     } catch (err) {
-      console.log('pick 함수 에러:', err);
       Alert.alert('오류', err?.message || String(err));
     }
   };
