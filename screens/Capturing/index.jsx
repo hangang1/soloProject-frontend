@@ -94,56 +94,59 @@ export default function Capturing() {
   };
 
   const handleTakePhoto = async () => {
-    if (!cameraRef.current || isSaving) return;
-  
-    setIsSaving(true);
-    try {
-      await requestStoragePermission();
-  
-      const photo = await cameraRef.current.takePhoto({ flash: 'off' });
-      let photoUri = photo.path;
-      if (!photoUri.startsWith('/')) {
-        photoUri = photoUri.replace(/^file:\/\//, '');
-      }
-      
-      const fileName = `IMG_${Date.now()}.jpg`;
-      const destPath = `${RNFS.ExternalDirectoryPath}/${fileName}`;
-      await RNFS.copyFile(photoUri, destPath);
-  
-      setPhotos((prev) => [...prev, destPath]);
-  
-      const guidedPath = await handleTakeGuidedPhoto(destPath);
-  
-      if (currentIdx < photoCells.length - 1) {
-        setGuidedPhotos(prev => [...prev, guidedPath]);
-        setCurrentIdx(currentIdx + 1);
-        Toast.show('다음 셀로 이동합니다.', {
-          duration: Toast.durations.SHORT,
-          position: Toast.positions.BOTTOM,
-        });
-      } else {
-        const finalGuidedPhotos = [...guidedPhotos, guidedPath];
-        Toast.show('모든 촬영 완료!', {
-          duration: Toast.durations.SHORT,
-          position: Toast.positions.BOTTOM,
-        });
-  
-        navigation.navigate('Saving', {
-          guidedPhotos: finalGuidedPhotos,
-          photoCells: photoCells,
-          originalDocxPath: localUri,
-        });
-      }
-    } catch (err) {
-      console.error('촬영/저장 실패:', err);
-      Toast.show('촬영 실패: ' + err.message, {
+  if (!cameraRef.current || isSaving) return;
+
+  setIsSaving(true);
+  try {
+    await requestStoragePermission();
+
+    const photo = await cameraRef.current.takePhoto({ flash: 'off' });
+    let photoUri = photo.path;
+    if (!photoUri.startsWith('/')) {
+      photoUri = photoUri.replace(/^file:\/\//, '');
+    }
+
+    const fileName = `IMG_${Date.now()}.jpg`;
+    const destPath = `${RNFS.ExternalDirectoryPath}/${fileName}`;
+    await RNFS.copyFile(photoUri, destPath);
+
+    setPhotos(prev => [...prev, destPath]);
+
+    const guidedPath = await handleTakeGuidedPhoto(destPath);
+    const guidedUri = guidedPath.startsWith('file://') ? guidedPath : `file://${guidedPath}`;
+    const newGuidedPhotos = [...guidedPhotos, guidedUri];
+
+    if (currentIdx < photoCells.length - 1) {
+      setGuidedPhotos(newGuidedPhotos);
+      setCurrentIdx(currentIdx + 1);
+      Toast.show('다음 셀로 이동합니다.', {
         duration: Toast.durations.SHORT,
         position: Toast.positions.BOTTOM,
       });
-    } finally {
-      setIsSaving(false);
+    } else {
+      setGuidedPhotos(newGuidedPhotos);
+      Toast.show('모든 촬영 완료!', {
+        duration: Toast.durations.SHORT,
+        position: Toast.positions.BOTTOM,
+      });
+
+      navigation.navigate('Saving', {
+        guidedPhotos: newGuidedPhotos,
+        photoCells: photoCells,
+        originalDocxPath: localUri,
+      });
     }
-  };
+
+  } catch (err) {
+    console.error('촬영/저장 실패:', err);
+    Toast.show('촬영 실패: ' + err.message, {
+      duration: Toast.durations.SHORT,
+      position: Toast.positions.BOTTOM,
+    });
+  } finally {
+    setIsSaving(false);
+  }
+};
   
   const handleTakeGuidedPhoto = async (photoPath) => {
     try {
@@ -228,9 +231,9 @@ export default function Capturing() {
         </TouchableOpacity>
       </View>
 
-      {photos.length > 0 && (
+      {guidedPhotos.length > 0 && (
         <View style={styles.thumbnailContainer} pointerEvents="none">
-          {photos.map((uri, idx) => (
+          {guidedPhotos.map((uri, idx) => (
             <Image key={idx} source={{ uri }} style={styles.thumbnail} />
           ))}
         </View>
