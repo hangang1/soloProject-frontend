@@ -6,6 +6,7 @@ import JSZip from 'jszip';
 import { Buffer } from 'buffer';
 import { XMLParser } from 'fast-xml-parser';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { loginWithGoogle } from '../../utils/auth';
 import Toast from 'react-native-root-toast';
 
 export default function MainPage() {
@@ -21,6 +22,19 @@ export default function MainPage() {
       navigation.setParams({ message: undefined });
     }
   }, [route.params?.message, navigation]);
+
+  const handleGoogleLogin = async () => {
+    try {
+      const tokens = await loginWithGoogle();
+      if (tokens && tokens.accessToken) {
+        navigation.navigate('GoogleDriveScreen', { tokens });
+      } else {
+        Alert.alert('로그인 실패', '토큰을 받아오지 못했습니다.');
+      }
+    } catch (err) {
+      Alert.alert('로그인 오류', err?.message || String(err));
+    }
+  };
 
   const importDocx = async () => {
     const [pickResult] = await pick({ type: [types.doc, types.docx] });
@@ -177,6 +191,9 @@ export default function MainPage() {
         <TouchableOpacity style={styles.uploadButton} onPress={handleUpload}>
           <Text style={styles.uploadButtonText}>보고서{"\n"}UPLOAD</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.googleButton} onPress={handleGoogleLogin}>
+          <Text style={styles.googleButtonText}>my GoogleDoc{"\n"}불러오기</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -245,6 +262,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   uploadButtonText: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    lineHeight: 28,
+  },
+  googleButton: {
+    backgroundColor: RED,
+    width: '80%',
+    paddingVertical: 18,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleButtonText: {
     color: '#fff',
     fontSize: 22,
     fontWeight: 'bold',
