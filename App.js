@@ -6,7 +6,8 @@ import { RootSiblingParent } from 'react-native-root-siblings';
 import 'react-native-gesture-handler';
 import MainPage from './screens/MainPage';
 import Capturing from './screens/Capturing';
-import Saving from './screens/Savig';
+import Saving from './screens/Saving';
+import GoogleDriveScreen from './screens/GoogleDriveScreen';
 
 const Stack = createStackNavigator();
 
@@ -21,6 +22,7 @@ export default function App() {
           <Stack.Screen name="MainPage" component={MainPage} />
           <Stack.Screen name="Capturing" component={Capturing} />
           <Stack.Screen name="Saving" component={Saving} />
+          <Stack.Screen name="GoogleDriveScreen" component={GoogleDriveScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </RootSiblingParent>
