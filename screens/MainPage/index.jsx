@@ -1,38 +1,48 @@
+import RNFS from 'react-native-fs';
+import JSZip from 'jszip';
+import Toast from 'react-native-root-toast';
 import React, { useEffect } from 'react';
 import { Alert, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
-import RNFS from 'react-native-fs';
-import JSZip from 'jszip';
 import { Buffer } from 'buffer';
 import { XMLParser } from 'fast-xml-parser';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { loginWithGoogle } from '../../utils/auth';
-import Toast from 'react-native-root-toast';
+import { loginWithGoogle } from '../../utils/auth.js';
+import { findFolderId, fetchWordFilesInFolder } from '../../utils/googleDrive.js';
 
 export default function MainPage() {
   const navigation = useNavigation();
   const route = useRoute();
 
-  useEffect(() => {
-    if (route.params?.message) {
-      Toast.show(route.params.message, {
-        duration: Toast.durations.LONG,
-        position: Toast.positions.CENTER,
-      });
-      navigation.setParams({ message: undefined });
-    }
-  }, [route.params?.message, navigation]);
+  const { downloadedDocxPath, accessToken, folderId } = route.params || {};
 
-  const handleGoogleLogin = async () => {
+  useEffect(() => {
+    if (route.params?.downloadedDocxPath) {
+      processDownloadedDocx(downloadedDocxPath, accessToken, folderId);
+      navigation.setParams({ downloadedDocxPath: undefined });
+    }
+  }, [route.params?.downloadedDocxPath]);
+
+  const processDownloadedDocx = async (localUri, accessToken, folderId) => {
     try {
-      const tokens = await loginWithGoogle();
-      if (tokens && tokens.accessToken) {
-        navigation.navigate('GoogleDriveScreen', { tokens });
-      } else {
-        Alert.alert('로그인 실패', '토큰을 받아오지 못했습니다.');
-      }
+      const documentXml = await docxToXml(localUri);
+      await xmlToJsImproved(documentXml, localUri, true, accessToken, folderId);
     } catch (err) {
-      Alert.alert('로그인 오류', err?.message || String(err));
+      Alert.alert('오류', err?.message || String(err));
+    }
+  };
+
+  const handleGoogleLoginAndFetch = async () => {
+    try {
+      const { accessToken, user } = await loginWithGoogle();
+
+      const folderId = await findFolderId(accessToken, 'soloProject');
+      const files = await fetchWordFilesInFolder(accessToken, folderId);
+
+      navigation.navigate('GoogleDriveScreen', { user, files, accessToken, folderId });
+    } catch (err) {
+      console.error(err);
+      Alert.alert('오류', err.message || '문제가 발생했습니다.');
     }
   };
 
@@ -63,7 +73,7 @@ export default function MainPage() {
     return documentXml;
   };
 
-  const xmlToJsImproved = async (documentXml, localUri) => {
+  const xmlToJsImproved = async (documentXml, localUri, isFromGoogle, accessToken, folderId) => {
     const parser = new XMLParser({ ignoreAttributes: false });
     const docObj = parser.parse(documentXml);
     const body = docObj['w:document']?.['w:body'];
@@ -144,7 +154,7 @@ export default function MainPage() {
     });
   
     if (photoCells.length > 0) {
-      navigation.navigate('Capturing', { localUri, photoCells });
+      navigation.navigate('Capturing', { localUri, photoCells, accessToken, folderId });
     } else {
       Alert.alert('알림', '문서에서 PHOTO 태그를 찾지 못했습니다.');
     }
@@ -156,7 +166,7 @@ export default function MainPage() {
       if (!localUri) return;
 
       const documentXml = await docxToXml(localUri);
-      await xmlToJsImproved(documentXml, localUri);
+      await xmlToJsImproved(documentXml, localUri, false);
     } catch (err) {
       Alert.alert('오류', err?.message || String(err));
     }
@@ -191,7 +201,7 @@ export default function MainPage() {
         <TouchableOpacity style={styles.uploadButton} onPress={handleUpload}>
           <Text style={styles.uploadButtonText}>보고서{"\n"}UPLOAD</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.googleButton} onPress={handleGoogleLogin}>
+        <TouchableOpacity style={styles.googleButton} onPress={handleGoogleLoginAndFetch}>
           <Text style={styles.googleButtonText}>my GoogleDoc{"\n"}불러오기</Text>
         </TouchableOpacity>
       </View>

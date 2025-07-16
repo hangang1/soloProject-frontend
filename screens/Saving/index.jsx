@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
 import RNFS from 'react-native-fs';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import ImageModule from 'docxtemplater-image-module-free';
 import Toast from 'react-native-root-toast';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import { Buffer } from 'buffer';
 
 global.Buffer = Buffer;
@@ -13,8 +13,81 @@ global.Buffer = Buffer;
 export default function Saving() {
   const route = useRoute();
   const navigation = useNavigation();
-  const { guidedPhotos = [], photoCells = [], originalDocxPath } = route.params || {};
+
+  const {
+    guidedPhotos = [],
+    photoCells = [],
+    originalDocxPath,
+    accessToken,
+    folderId,
+  } = route.params || {};
+
   const [isProcessing, setIsProcessing] = useState(false);
+  const [dotText, setDotText] = useState('');
+
+  useEffect(() => {
+    let interval;
+    if (isProcessing) {
+      interval = setInterval(() => {
+        setDotText(prev => {
+          if (prev === '') return '.';
+          if (prev === '.') return '..';
+          if (prev === '..') return '...';
+          return '';
+        });
+      }, 500);
+    }
+    return () => clearInterval(interval);
+  }, [isProcessing]);
+
+  const uploadToGoogleDrive = async (localPath) => {
+    try {
+      const fileContent = await RNFS.readFile(localPath, 'base64');
+
+      const metadata = {
+        name: `guided_${Date.now()}.docx`,
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        parents: [folderId],
+      };
+
+      const body =
+        `--boundary_12345\r\n` +
+        `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+        `${JSON.stringify(metadata)}\r\n` +
+        `--boundary_12345\r\n` +
+        `Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document\r\n` +
+        `Content-Transfer-Encoding: base64\r\n\r\n` +
+        `${fileContent}\r\n` +
+        `--boundary_12345--`;
+
+      const response = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'multipart/related; boundary=boundary_12345',
+          },
+          body,
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error('업로드 실패:', result);
+        throw new Error(result.error?.message || '업로드 실패');
+      }
+
+      Toast.show('구글드라이브 업로드 성공!', {
+        duration: Toast.durations.SHORT,
+        position: Toast.positions.CENTER,
+      });
+    } catch (err) {
+      console.error('업로드 에러:', err);
+      Alert.alert('업로드 오류', err.message);
+    }
+  };
 
   const handleCreateDocx = async () => {
     if (isProcessing) return;
@@ -31,38 +104,22 @@ export default function Saving() {
         templateData[`PHOTO${idx + 1}`] = photoPath;
       });
 
-      await Promise.all(guidedPhotos.map(async (photoPath, idx) => {
-        const exists = await RNFS.exists(photoPath);
-      }));
-
       const imageModule = new ImageModule({
         centered: false,
         fileType: 'docx',
         getImage: async (tagValue, tagName) => {
-          const idx = parseInt(tagName.replace("PHOTO", ""), 10) - 1;
+          const idx = parseInt(tagName.replace('PHOTO', ''), 10) - 1;
           const imagePath = guidedPhotos[idx];
-
-          const exists = await RNFS.exists(imagePath);
-          if (!exists) throw new Error(`getImage: 파일이 존재하지 않음: ${imagePath}`);
-
           const imageBase64 = await RNFS.readFile(imagePath, 'base64');
-          const buf = Buffer.from(imageBase64, 'base64');
-
-          return buf;
+          return Buffer.from(imageBase64, 'base64');
         },
         getSize: (buf, tagValue, tagName) => {
-          const idx = parseInt(tagName.replace("PHOTO", ""), 10) - 1;
+          const idx = parseInt(tagName.replace('PHOTO', ''), 10) - 1;
           const cell = photoCells[idx];
-
-          if (!cell || !cell.cellWidthMm || !cell.rowHeightMm) {
-            throw new Error(`getSize: invalid cell size. cell=${JSON.stringify(cell)}`);
-          }
-
           const widthEmu = parseFloat(cell.cellWidthMm) * 36000;
           const heightEmu = parseFloat(cell.rowHeightMm) * 36000;
-
           return [widthEmu, heightEmu];
-        }
+        },
       });
 
       const doc = new Docxtemplater(zip, {
@@ -89,17 +146,18 @@ export default function Saving() {
         position: Toast.positions.CENTER,
       });
 
+      if (accessToken && folderId) {
+        await uploadToGoogleDrive(outputPath);
+      } else {
+        console.log("[Saving] 로컬 저장 전용 - 구글 업로드 생략");
+      }
+
       navigation.navigate('MainPage', {
         processedDocxPath: outputPath,
-        message: 'DOCX 파일이 성공적으로 생성되었습니다!',
+        message: '문서 생성 및 업로드 완료!',
       });
     } catch (err) {
-      console.error('[ERROR] render 또는 파일 생성 중 문제 발생:', err);
-      if (err.properties && err.properties.errors) {
-        err.properties.errors.forEach(e => {
-          console.error('[ERROR DETAIL]', e);
-        });
-      }
+      console.error('[ERROR] 문서 생성 또는 업로드 중 문제 발생:', err);
       Toast.show('오류: ' + err.message, {
         duration: Toast.durations.LONG,
         position: Toast.positions.CENTER,
@@ -122,7 +180,7 @@ export default function Saving() {
           onPress={handleCreateDocx}
         >
           <Text style={styles.saveButtonText}>
-            {isProcessing ? '처리중...' : '문서 저장'}
+            {isProcessing ? `처리중${dotText}` : '문서 저장'}
           </Text>
         </TouchableOpacity>
       </View>

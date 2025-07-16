@@ -3,8 +3,6 @@ import { View, StyleSheet, Dimensions } from 'react-native';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-const BLUE = '#2D71BE';
-
 export default function GuideOverlay({ frameStyle }) {
   if (!frameStyle.width || !frameStyle.height) return null;
 
@@ -20,6 +18,8 @@ export default function GuideOverlay({ frameStyle }) {
     </>
   );
 }
+
+const BLUE = '#2D71BE';
 
 const styles = StyleSheet.create({
   overlay: {

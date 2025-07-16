@@ -20,15 +20,15 @@ import ViewShot from 'react-native-view-shot';
 export default function Capturing() {
   const route = useRoute();
   const navigation = useNavigation();
-  const { localUri, photoCells = [] } = route.params || {};
+  const devices = useCameraDevices();
+  const cameraRef = useRef(null);
+  const viewShotRef = useRef(null);
+  const device = devices?.find((d) => d.position === 'back');
+  const { localUri, photoCells = [], accessToken, folderId } = route.params || {};
   const [currentIdx, setCurrentIdx] = useState(0);
   const [photos, setPhotos] = useState([]);
   const [guidedPhotos, setGuidedPhotos] = useState([]);
-  const devices = useCameraDevices();
-  const device = devices?.find((d) => d.position === 'back');
   const [hasPermission, setHasPermission] = useState(false);
-  const cameraRef = useRef(null);
-  const viewShotRef = useRef(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -94,9 +94,14 @@ export default function Capturing() {
   };
 
   const handleTakePhoto = async () => {
-  if (!cameraRef.current || isSaving) return;
+    
+  if (!cameraRef.current || isSaving || !hasPermission || !device) {
+  console.warn("Camera not ready or already saving.");
+  return;
+  }
 
   setIsSaving(true);
+  
   try {
     await requestStoragePermission();
 
@@ -134,6 +139,8 @@ export default function Capturing() {
         guidedPhotos: newGuidedPhotos,
         photoCells: photoCells,
         originalDocxPath: localUri,
+        accessToken,
+        folderId,
       });
     }
 
